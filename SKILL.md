@@ -90,6 +90,8 @@ conversation. Instead, launch it in the background so the user can keep working:
 ## find `<question>`
 
 1. Run `node $SKILL_DIR/scripts/search.js "<question>" --limit 8` (add `--tag <t>` if the user filtered).
+   Search is **global by default**. If the user scopes to a project ("in this project", "for project foo"…),
+   add `--project <name>` — use `--project .` for "this project" (resolves to the basename of the cwd).
 2. **Answer the user's question** using the results' `summary` and `best_chunk`, citing every source you use with its URL (markdown link).
 3. If a `warning` is present (vector disabled), mention search ran in keyword-only mode.
 4. If results are empty or clearly off-topic, say so honestly and suggest `/lookout add <url>` to grow the base.
@@ -98,6 +100,7 @@ conversation. Instead, launch it in the background so the user can keep working:
 
 Run `node $SKILL_DIR/scripts/list.js --limit 15` (add `--tag <t>` if given, `--tags` if the user asks for the tag list).
 If the user gives a number or asks for more/all, adjust `--limit` accordingly (use `--limit 100000` for "all").
+Listing is **global by default**; if the user scopes to a project, add `--project <name>` (`--project .` = basename of the cwd).
 Render a markdown table: title (linked to URL), tags, project, date.
 
 ## note `<free text>`

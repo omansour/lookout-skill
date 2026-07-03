@@ -1,7 +1,9 @@
 // search.js — hybrid search: vector full-scan + LIKE keyword, merged with RRF.
 //
-// usage: node search.js "<question>" [--limit 8] [--tag <t>] [--mode hybrid|vector|keyword]
+// usage: node search.js "<question>" [--limit 8] [--tag <t>] [--project <name|.>] [--mode hybrid|vector|keyword]
+//        --project . resolves to the basename of the current directory
 // output: {"results":[{id,url,title,summary,tags,added_at,score,best_chunk}], "warning"?}
+import { basename } from 'node:path';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, vectorSearch, keywordSearch } from './lib/db.js';
 import { embed, checkOllama, hasModel, OllamaDownError } from './lib/ollama.js';
@@ -16,10 +18,12 @@ function arg(name, fallback) {
 try {
   const query = process.argv[2];
   if (!query || query.startsWith('--')) {
-    fail('BAD_INPUT', 'missing query', 'usage: node search.js "<question>" [--limit 8] [--tag t] [--mode hybrid|vector|keyword]');
+    fail('BAD_INPUT', 'missing query', 'usage: node search.js "<question>" [--limit 8] [--tag t] [--project name|.] [--mode hybrid|vector|keyword]');
   }
   const limit = Number(arg('--limit', 8));
   const tag = arg('--tag', null);
+  const projectRaw = arg('--project', null);
+  const project = projectRaw === '.' ? basename(process.cwd()) : projectRaw;
   const mode = arg('--mode', 'hybrid');
 
   const db = await openDb();
@@ -32,7 +36,7 @@ try {
     if (up && hasModel(models)) {
       try {
         const [qv] = await embed([query], { isQuery: true });
-        vectorResults = await vectorSearch(db, qv, { tag });
+        vectorResults = await vectorSearch(db, qv, { tag, project });
       } catch (e) {
         if (!(e instanceof OllamaDownError)) throw e;
         warning = 'vector disabled (ollama down)';
@@ -46,7 +50,7 @@ try {
   }
 
   // keyword leg
-  const keywordResults = mode !== 'vector' ? await keywordSearch(db, query, { tag }) : [];
+  const keywordResults = mode !== 'vector' ? await keywordSearch(db, query, { tag, project }) : [];
 
   // RRF merge: score(entry) = sum over lists of 1/(K + rank)
   const scores = new Map(); // id -> {score, entry, best_chunk?}

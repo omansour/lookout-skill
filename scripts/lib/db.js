@@ -109,12 +109,33 @@ export async function storeEntry(db, entry, embeddedChunks) {
   }
 }
 
+// SQL WHERE fragments for the shared tag/project filters, on the entries
+// table aliased as `alias`. Filtering happens in the engine, never in JS.
+function entryFilters({ tag = null, project = null } = {}, alias = 'entries') {
+  const clauses = [];
+  const params = [];
+  if (tag) {
+    clauses.push(`EXISTS (SELECT 1 FROM json_each(${alias}.tags) WHERE json_each.value = ?)`);
+    params.push(tag);
+  }
+  if (project) {
+    clauses.push(`${alias}.project = ?`);
+    params.push(project);
+  }
+  return { clauses, params };
+}
+
 // Full-scan cosine search over chunks, deduped by entry (best distance kept).
-export async function vectorSearch(db, queryVector, { topChunks = 40, tag = null } = {}) {
+// tag/project filters apply before the topChunks cut, so a scoped search
+// still gets a full candidate set.
+export async function vectorSearch(db, queryVector, { topChunks = 40, tag = null, project = null } = {}) {
+  const { clauses, params } = entryFilters({ tag, project }, 'e');
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = await db.prepare(
     `SELECT c.entry_id, c.text, vector_distance_cos(c.embedding, vector32(?)) AS dist
-     FROM chunks c ORDER BY dist ASC LIMIT ?`
-  ).all(JSON.stringify(queryVector), topChunks);
+     FROM chunks c JOIN entries e ON e.id = c.entry_id ${where}
+     ORDER BY dist ASC LIMIT ?`
+  ).all(JSON.stringify(queryVector), ...params, topChunks);
   const best = new Map(); // entry_id -> {dist, text}
   for (const r of rows) {
     if (!best.has(r.entry_id)) best.set(r.entry_id, { dist: r.dist, text: r.text });
@@ -123,28 +144,28 @@ export async function vectorSearch(db, queryVector, { topChunks = 40, tag = null
   for (const [entryId, { dist, text }] of best) {
     const e = await getEntry(db, entryId);
     if (!e) continue;
-    if (tag && !e.tags.includes(tag)) continue;
     results.push({ ...e, distance: dist, best_chunk: text });
   }
   return results; // already ordered by distance (Map preserves insertion order)
 }
 
 // Case-insensitive multi-term LIKE search; score = number of matching terms.
-export async function keywordSearch(db, query, { limit = 40, tag = null } = {}) {
+export async function keywordSearch(db, query, { limit = 40, tag = null, project = null } = {}) {
   const terms = query.toLowerCase().split(/\s+/).filter(t => t.length >= 3).slice(0, 8);
   if (terms.length === 0) return [];
   const clause = terms.map(() =>
     `(CASE WHEN lower(title) LIKE ? OR lower(summary) LIKE ? OR lower(tags) LIKE ? OR lower(content) LIKE ? THEN 1 ELSE 0 END)`
   ).join(' + ');
-  const params = terms.flatMap(t => Array(4).fill(`%${t}%`));
+  const likeParams = terms.flatMap(t => Array(4).fill(`%${t}%`));
+  const { clauses, params } = entryFilters({ tag, project });
+  const where = ['(' + clause + ') > 0', ...clauses].join(' AND ');
   const rows = await db.prepare(
-    `SELECT id, (${clause}) AS hits FROM entries WHERE (${clause}) > 0 ORDER BY hits DESC, added_at DESC LIMIT ?`
-  ).all(...params, ...params, limit);
+    `SELECT id, (${clause}) AS hits FROM entries WHERE ${where} ORDER BY hits DESC, added_at DESC LIMIT ?`
+  ).all(...likeParams, ...likeParams, ...params, limit);
   const results = [];
   for (const r of rows) {
     const e = await getEntry(db, r.id);
     if (!e) continue;
-    if (tag && !e.tags.includes(tag)) continue;
     results.push({ ...e, hits: r.hits });
   }
   return results;
@@ -198,15 +219,14 @@ export async function getEntry(db, id) {
   return { ...e, tags: JSON.parse(e.tags) };
 }
 
-export async function listEntries(db, { limit = 15, tag = null } = {}) {
+export async function listEntries(db, { limit = 15, tag = null, project = null } = {}) {
+  const { clauses, params } = entryFilters({ tag, project });
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const rows = await db.prepare(
-    'SELECT id, url, kind, title, tags, project, origin, added_at FROM entries ORDER BY added_at DESC, id DESC'
-  ).all();
-  const entries = rows
-    .map(r => ({ ...r, tags: JSON.parse(r.tags) }))
-    .filter(r => !tag || r.tags.includes(tag))
-    .slice(0, limit);
-  return entries;
+    `SELECT id, url, kind, title, tags, project, origin, added_at FROM entries ${where}
+     ORDER BY added_at DESC, id DESC LIMIT ?`
+  ).all(...params, limit);
+  return rows.map(r => ({ ...r, tags: JSON.parse(r.tags) }));
 }
 
 export async function tagCounts(db) {
