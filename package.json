@@ -1,0 +1,12 @@
+{
+  "name": "lookout-skill",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scripts for the lookout Claude Code skill (personal tech watch, local vectorized Turso DB)",
+  "dependencies": {
+    "@tursodatabase/database": "0.6.1",
+    "@mozilla/readability": "0.6.0",
+    "linkedom": "0.18.12"
+  }
+}
