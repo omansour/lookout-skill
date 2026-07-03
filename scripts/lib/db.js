@@ -219,14 +219,37 @@ export async function getEntry(db, id) {
   return { ...e, tags: JSON.parse(e.tags) };
 }
 
+// Entries grouped by add-batch (origin), newest batch first, root entry first
+// within its batch. Entries without origin form single-entry batches.
+// Returns [{origin, truncated?, entries:[…]}]; `truncated` marks batches cut
+// by the row limit. Grouping and ordering are done by the SQL engine; JS only
+// folds the ordered rows into batch objects.
 export async function listEntries(db, { limit = 15, tag = null, project = null } = {}) {
-  const { clauses, params } = entryFilters({ tag, project });
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const outer = entryFilters({ tag, project }, 'e');
+  const inner = entryFilters({ tag, project }, 's');
   const rows = await db.prepare(
-    `SELECT id, url, kind, title, tags, project, origin, added_at FROM entries ${where}
-     ORDER BY added_at DESC, id DESC LIMIT ?`
-  ).all(...params, limit);
-  return rows.map(r => ({ ...r, tags: JSON.parse(r.tags) }));
+    `SELECT e.id, e.url, e.kind, e.title, e.tags, e.project, e.origin, e.added_at,
+            b.gkey, b.n
+     FROM entries e
+     JOIN (SELECT COALESCE(s.origin, 'solo:' || s.id) AS gkey, MAX(s.added_at) AS latest, COUNT(*) AS n
+           FROM entries s ${inner.clauses.length ? 'WHERE ' + inner.clauses.join(' AND ') : ''}
+           GROUP BY gkey) b
+       ON COALESCE(e.origin, 'solo:' || e.id) = b.gkey
+     ${outer.clauses.length ? 'WHERE ' + outer.clauses.join(' AND ') : ''}
+     ORDER BY b.latest DESC,
+       CASE WHEN e.url IS NOT NULL AND e.url = e.origin THEN 1 ELSE 0 END DESC,
+       e.added_at DESC, e.id DESC
+     LIMIT ?`
+  ).all(...inner.params, ...outer.params, limit);
+  const batches = [];
+  for (const { gkey, n, ...r } of rows) {
+    const entry = { ...r, tags: JSON.parse(r.tags) };
+    const last = batches[batches.length - 1];
+    if (last && last.gkey === gkey) last.entries.push(entry);
+    else batches.push({ gkey, n, origin: entry.origin, entries: [entry] });
+  }
+  return batches.map(({ gkey, n, origin, entries }) =>
+    ({ origin, ...(entries.length < n ? { truncated: true } : {}), entries }));
 }
 
 export async function tagCounts(db) {

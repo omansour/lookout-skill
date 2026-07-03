@@ -101,11 +101,10 @@ conversation. Instead, launch it in the background so the user can keep working:
 Run `node $SKILL_DIR/scripts/list.js --limit 15` (add `--tag <t>` if given, `--tags` if the user asks for the tag list).
 If the user gives a number or asks for more/all, adjust `--limit` accordingly (use `--limit 100000` for "all").
 Listing is **global by default**; if the user scopes to a project, add `--project <name>` (`--project .` = basename of the cwd).
-Render a markdown table (title linked to URL, tags, project, date), **grouped by add-batch**:
-- Group rows by `origin`; order batches by their most recent `added_at`.
-- Within a batch, show the root first (the entry whose `url` equals `origin`), then the crawled children with a `└` prefix on the title.
-- Entries whose origin is null or whose batch has a single entry render as plain rows.
-- Note when a batch is visibly truncated by the limit (children beyond `--limit` not shown).
+The script returns entries **already grouped by add-batch** (`batches`, newest first; within a batch the root entry
+comes first). Render a markdown table per batch (title linked to URL, tags, date): root as a plain row, children
+with a `└` prefix on the title; single-entry batches render as plain rows. If a batch has `truncated: true`,
+mention that the limit cut it.
 
 ## note `<free text>`
 
