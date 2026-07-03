@@ -17,6 +17,8 @@ A [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills) that t
 
 ## Installation
 
+This is a **global, user-level install**: skills cloned into `~/.claude/skills/` are available in every Claude Code session, whatever project you are working in. There is nothing to install per repository — one skill, one database (`~/.lookout/`), shared across all your projects. (Cloning into a repo's `.claude/skills/` instead would scope the skill to that project, which makes little sense for a personal knowledge base.)
+
 ```bash
 git clone <this repo> ~/.claude/skills/lookout
 npm install --prefix ~/.claude/skills/lookout
@@ -41,6 +43,8 @@ Then, in Claude Code:
 | `/lookout list [tag] [N\|all]` | Recent entries, optionally filtered by tag |
 | `/lookout note <free text>` | Store a free-text note |
 | `/lookout delete <id\|url>` | Delete one entry, or a whole add-batch via its origin URL |
+
+Every entry records the **project** (working directory) it was saved from. `find` and `list` query the whole base by default; scope them to a project in plain language — "find X *in this project*", "list my watch *for project foo*" — and the query is filtered in SQL via `--project` (with `--project .` resolving to the current directory's name).
 
 ## Example session
 
