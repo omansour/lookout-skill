@@ -4,7 +4,7 @@ A [Claude Code skill](https://docs.claude.com/en/docs/claude-code/skills) that t
 
 ## What it does
 
-- **Save an article** (`/lookout add <url>`) — fetches the page, extracts the readable text, writes a summary and tags, stores it, and automatically crawls the most relevant outbound links (up to 2 levels deep, 15 pages max per add).
+- **Save an article** (`/lookout add <url>`) — fetches the page, extracts the readable text, writes a summary and tags, stores it, and automatically crawls the most relevant outbound links (up to 2 levels deep, 15 pages max per add). The whole pipeline runs **asynchronously in a background subagent**: you keep working while it indexes, and get a tree recap (root → crawled children, with skipped/failed links) when it finishes.
 - **Ask your knowledge base a question** (`/lookout find <question>`) — hybrid semantic + keyword search over everything you saved, answered with cited sources.
 - **Jot down a note** (`/lookout note <text>`) — free-text notes get the same summary/tags/embedding treatment as articles.
 - **Browse and prune** (`/lookout list`, `/lookout delete`) — list recent entries, filter by tag, delete a single entry or an entire crawl batch in one shot.
@@ -41,6 +41,42 @@ Then, in Claude Code:
 | `/lookout list [tag] [N\|all]` | Recent entries, optionally filtered by tag |
 | `/lookout note <free text>` | Store a free-text note |
 | `/lookout delete <id\|url>` | Delete one entry, or a whole add-batch via its origin URL |
+
+## Example session
+
+Indexing an article — the add runs in the background and ends with a crawl recap:
+
+```
+> /lookout add https://aws.amazon.com/blogs/machine-learning/build-generative-ui-for-ai-agents-on-amazon-bedrock-agentcore-with-the-ag-ui-protocol/
+
+Indexing started in the background — you can keep working, I'll post the recap when it finishes.
+
+[…later…]
+
+Indexed 7 pages:
+● Build generative UI for AI agents on Amazon Bedrock AgentCore with the AG-UI protocol (14 chunks)
+├── AG-UI Overview - Agent User Interaction Protocol (5 chunks) [crawled]
+│   └── AG-UI protocol contract - Amazon Bedrock AgentCore (4 chunks) [crawled]
+├── Amazon Bedrock AgentCore Gateway (8 chunks) [crawled]
+├── Add memory to your Amazon Bedrock AgentCore agent (6 chunks) [crawled]
+│   └── fullstack-solution-template-for-agentcore/docs/DEPLOYMENT.md (9 chunks) [crawled]
+└── skipped: https://modelcontextprotocol.io/docs/getting-started/intro (already saved)
+```
+
+Searching the knowledge base — semantic search, answered with citations:
+
+```
+> /lookout find how do agents stream UI updates to the frontend?
+
+Two saved resources cover this directly:
+
+- [AG-UI Overview](https://docs.ag-ui.com/introduction) — AG-UI is an open, event-based
+  protocol standardizing bi-directional connections between user-facing apps and any
+  agentic backend, built on HTTP/WebSockets…
+- [AG-UI protocol contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-agui-protocol-contract.html)
+  — AgentCore Runtime implements the AG-UI contract: the agent emits TEXT_MESSAGE_*,
+  TOOL_CALL_* and STATE_DELTA events consumed by the frontend…
+```
 
 ## How it works
 
