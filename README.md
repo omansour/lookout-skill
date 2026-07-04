@@ -40,11 +40,13 @@ Then, in Claude Code:
 | `/lookout init` | System check & repair |
 | `/lookout add <url>` | Fetch, summarize, tag, store — then crawl relevant links |
 | `/lookout find <question>` | Semantic + keyword search, answer with citations |
-| `/lookout list [tag] [N\|all]` | Recent entries, optionally filtered by tag |
+| `/lookout list [tag] [N\|all]` | Recent entries grouped by add-batch, optionally filtered by tag |
 | `/lookout note <free text>` | Store a free-text note |
 | `/lookout delete <id\|url>` | Delete one entry, or a whole add-batch via its origin URL |
 
 Every entry records the **project** (working directory) it was saved from. `find` and `list` query the whole base by default; scope them to a project in plain language — "find X *in this project*", "list my watch *for project foo*" — and the query is filtered in SQL via `--project` (with `--project .` resolving to the current directory's name).
+
+`list` returns entries **already grouped by add-batch** (shared `origin`): the SQL query orders batches newest-first, puts the root entry before its crawled children, and flags batches cut by the limit (`truncated`) — no post-processing needed on the rendering side.
 
 ## Example session
 
