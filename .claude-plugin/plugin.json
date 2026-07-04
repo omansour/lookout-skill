@@ -1,7 +1,7 @@
 {
   "name": "lookout",
   "description": "Personal tech watch: save articles with auto-crawl, semantic search with citations — local Turso DB + Ollama embeddings, no cloud",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": { "name": "Olivier Mansour" },
   "repository": "https://github.com/omansour/lookout-skill",
   "license": "MIT"

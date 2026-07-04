@@ -64,6 +64,7 @@ Both channels are **global, user-level installs**: the skills are available in e
 | `/lookout:list [tag] [N\|all]` | Recent entries grouped by add-batch, optionally filtered by tag |
 | `/lookout:note <free text>` | Store a free-text note |
 | `/lookout:delete <id\|url>` | Delete one entry, or a whole add-batch via its origin URL |
+| `/lookout:help` | Overview of all commands and how to get started |
 
 You can also just talk to Claude ("save this article for my tech watch", "what did I save about MCP?") — the skills are picked automatically from context.
 
