@@ -1,0 +1,15 @@
+{
+  "name": "lookout",
+  "description": "Self-hosted marketplace for the lookout personal tech-watch plugin",
+  "owner": {
+    "name": "Olivier Mansour"
+  },
+  "plugins": [
+    {
+      "name": "lookout",
+      "source": ".",
+      "description": "Personal tech watch: save articles with auto-crawl, semantic search with citations \u2014 local Turso DB + Ollama embeddings, no cloud",
+      "version": "1.0.0"
+    }
+  ]
+}
