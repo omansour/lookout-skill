@@ -42,6 +42,12 @@ const DDL = [
   )`,
 ];
 
+// created after the origin migration — an old DB gains the column first
+const INDEXES = [
+  `CREATE INDEX IF NOT EXISTS idx_entries_origin ON entries(origin)`,
+  `CREATE INDEX IF NOT EXISTS idx_entries_added_at ON entries(added_at)`,
+];
+
 export async function openDb() {
   mkdirSync(dirname(DB_PATH), { recursive: true });
   const db = await connect(DB_PATH);
@@ -53,7 +59,12 @@ export async function openDb() {
 async function ensureSchema(db) {
   for (const ddl of DDL) await db.exec(ddl);
   // migration for DBs created before the origin column existed
-  try { await db.exec('ALTER TABLE entries ADD COLUMN origin TEXT'); } catch { /* already there */ }
+  try {
+    await db.exec('ALTER TABLE entries ADD COLUMN origin TEXT');
+  } catch (e) {
+    if (!/duplicate column/i.test(e?.message ?? '')) throw e;
+  }
+  for (const idx of INDEXES) await db.exec(idx);
   const get = db.prepare('SELECT value FROM meta WHERE key = ?');
   const set = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING');
   await set.run('schema_version', SCHEMA_VERSION);
@@ -125,28 +136,29 @@ function entryFilters({ tag = null, project = null } = {}, alias = 'entries') {
   return { clauses, params };
 }
 
+// Columns every search result carries — must stay in sync with getEntry().
+const ENTRY_COLS = 'id, url, kind, title, summary, tags, source_domain, project, added_at, updated_at';
+
 // Full-scan cosine search over chunks, deduped by entry (best distance kept).
 // tag/project filters apply before the topChunks cut, so a scoped search
 // still gets a full candidate set.
 export async function vectorSearch(db, queryVector, { topChunks = 40, tag = null, project = null } = {}) {
   const { clauses, params } = entryFilters({ tag, project }, 'e');
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const cols = ENTRY_COLS.split(', ').map(c => `e.${c}`).join(', ');
   const rows = await db.prepare(
-    `SELECT c.entry_id, c.text, vector_distance_cos(c.embedding, vector32(?)) AS dist
+    `SELECT ${cols}, c.text, vector_distance_cos(c.embedding, vector32(?)) AS dist
      FROM chunks c JOIN entries e ON e.id = c.entry_id ${where}
      ORDER BY dist ASC LIMIT ?`
   ).all(JSON.stringify(queryVector), ...params, topChunks);
-  const best = new Map(); // entry_id -> {dist, text}
-  for (const r of rows) {
-    if (!best.has(r.entry_id)) best.set(r.entry_id, { dist: r.dist, text: r.text });
-  }
   const results = [];
-  for (const [entryId, { dist, text }] of best) {
-    const e = await getEntry(db, entryId);
-    if (!e) continue;
-    results.push({ ...e, distance: dist, best_chunk: text });
+  const seen = new Set(); // keep only each entry's best chunk (rows come sorted)
+  for (const { text, dist, ...e } of rows) {
+    if (seen.has(e.id)) continue;
+    seen.add(e.id);
+    results.push({ ...e, tags: JSON.parse(e.tags), distance: dist, best_chunk: text });
   }
-  return results; // already ordered by distance (Map preserves insertion order)
+  return results; // already ordered by distance
 }
 
 // Case-insensitive multi-term LIKE search; score = number of matching terms.
@@ -160,15 +172,9 @@ export async function keywordSearch(db, query, { limit = 40, tag = null, project
   const { clauses, params } = entryFilters({ tag, project });
   const where = ['(' + clause + ') > 0', ...clauses].join(' AND ');
   const rows = await db.prepare(
-    `SELECT id, (${clause}) AS hits FROM entries WHERE ${where} ORDER BY hits DESC, added_at DESC LIMIT ?`
+    `SELECT ${ENTRY_COLS}, (${clause}) AS hits FROM entries WHERE ${where} ORDER BY hits DESC, added_at DESC LIMIT ?`
   ).all(...likeParams, ...likeParams, ...params, limit);
-  const results = [];
-  for (const r of rows) {
-    const e = await getEntry(db, r.id);
-    if (!e) continue;
-    results.push({ ...e, hits: r.hits });
-  }
-  return results;
+  return rows.map(r => ({ ...r, tags: JSON.parse(r.tags) }));
 }
 
 // Transactional delete of an entry and its chunks (no FK cascade in the beta engine).
