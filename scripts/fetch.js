@@ -2,22 +2,16 @@
 //
 // usage: node fetch.js <url>
 // output: {"url":"<normalized>","title","byline","site_name","source_domain",
-//          "content","length":int,"existing":{id,added_at,updated_at}|null}
+//          "content","length":int,"truncated":bool,"existing":{id,added_at,updated_at}|null}
+//         content is capped at CONTENT_CAP (store.js truncates there anyway);
+//         length is the full extracted size, truncated says whether the cap hit
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, getEntryByUrl } from './lib/db.js';
 import { extractReadable } from './lib/extract.js';
+import { normalizeUrl } from './lib/url.js';
+import { CONTENT_CAP } from './lib/chunk.js';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
-const TRACKING_PARAMS = /^(utm_|fbclid|gclid|mc_cid|mc_eid|ref_src)/;
-
-export function normalizeUrl(raw) {
-  const u = new URL(raw);
-  u.hash = '';
-  for (const key of [...u.searchParams.keys()]) {
-    if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key);
-  }
-  return u.toString();
-}
 
 try {
   const raw = process.argv[2];
@@ -69,8 +63,9 @@ try {
     byline,
     site_name: siteName,
     source_domain: new URL(finalUrl).hostname,
-    content: text,
+    content: text.slice(0, CONTENT_CAP),
     length: text.length,
+    truncated: text.length > CONTENT_CAP,
     links,
     existing,
   });
