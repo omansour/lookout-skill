@@ -6,6 +6,10 @@ const CHUNK_SIZE = 1500;
 const OVERLAP = 200;
 const MAX_CHUNKS = 30;
 
+// Max stored content length; fetch.js caps its output to the same value so
+// nothing that reaches the model is silently lost at store time.
+export const CONTENT_CAP = 40_000;
+
 // entry: {title, summary, tags[], content} → [{seq, text}]
 export function buildChunks(entry) {
   const header = `${entry.title}\n${entry.summary}\ntags: ${entry.tags.join(', ')}`;

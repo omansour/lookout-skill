@@ -31,7 +31,7 @@ conversation. Instead, launch it in the background so the user can keep working:
 
 1. Run `node <PLUGIN_ROOT>/scripts/fetch.js "<url>"`.
    - If `existing` is not null: skip (already saved) — for the root URL, ask the user about updating first (see above).
-   - If exit 2 (`FETCH_BLOCKED` / `EXTRACT_EMPTY` / `UNSUPPORTED_TYPE`): fall back to **WebFetch** on the URL with prompt "Return the full readable text of this page, plus its title." Use that as title/content; keep the normalized URL from the error context or normalize yourself (strip fragment and utm_* params).
+   - If exit 2 (`FETCH_BLOCKED` / `EXTRACT_EMPTY` / `UNSUPPORTED_TYPE`): fall back to **WebFetch** on the URL with prompt "Return the full readable text of this page, plus its title." Use that as title/content; pass the URL as-is — store.js normalizes it (strips fragment and utm_* params).
 2. Run `node <PLUGIN_ROOT>/scripts/list.js --tags` to see existing tags.
 3. Write a **3–5 sentence English summary** of the content and pick **3–6 tags**:
    reuse existing tags when relevant; new tags in kebab-case English.

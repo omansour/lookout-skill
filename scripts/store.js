@@ -9,10 +9,9 @@
 import { readFileSync } from 'node:fs';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, storeEntry } from './lib/db.js';
-import { buildChunks } from './lib/chunk.js';
+import { buildChunks, CONTENT_CAP } from './lib/chunk.js';
 import { embed, OllamaDownError } from './lib/ollama.js';
-
-const CONTENT_CAP = 40_000;
+import { normalizeUrl } from './lib/url.js';
 
 try {
   const fileIdx = process.argv.indexOf('--file');
@@ -40,6 +39,16 @@ try {
   }
   if (problems.length) fail('BAD_INPUT', problems.join('; '), 'fix the entry JSON and retry');
 
+  // normalize urls so dedup (UNIQUE on entries.url) and batch delete (origin
+  // match) work whatever path produced the JSON — fetch.js or WebFetch fallback
+  try {
+    if (entry.url) entry.url = normalizeUrl(entry.url);
+    if (entry.origin) entry.origin = normalizeUrl(entry.origin);
+  } catch {
+    fail('BAD_INPUT', `url or origin is not a valid URL: ${entry.url ?? entry.origin}`,
+      'pass full http(s) URLs');
+  }
+
   entry.content = entry.content.slice(0, CONTENT_CAP);
   if (entry.url && !entry.source_domain) {
     try { entry.source_domain = new URL(entry.url).hostname; } catch { /* keep null */ }
@@ -51,8 +60,9 @@ try {
     vectors = await embed(chunks.map(c => c.text));
   } catch (e) {
     if (e instanceof OllamaDownError) {
-      fail('OLLAMA_DOWN', e.message,
-        "the transit JSON is kept in ~/.lookout/tmp/ — start Ollama ('ollama serve') and rerun store.js with the same --file");
+      fail('OLLAMA_DOWN', e.message, fileIdx !== -1
+        ? "the transit JSON is kept in ~/.lookout/tmp/ — start Ollama ('ollama serve') and rerun store.js with the same --file"
+        : "start Ollama ('ollama serve') and rerun store.js with the same entry JSON");
     }
     throw e;
   }
