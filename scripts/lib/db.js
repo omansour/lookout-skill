@@ -219,46 +219,29 @@ export async function getEntry(db, id) {
   return { ...e, tags: JSON.parse(e.tags) };
 }
 
-// Entries grouped by add-batch (origin), newest batch first, root entry first
-// within its batch. Entries without origin form single-entry batches.
-// Returns [{origin, truncated?, entries:[…]}]; `truncated` marks batches cut
-// by the row limit. Grouping and ordering are done by the SQL engine; JS only
-// folds the ordered rows into batch objects.
+// Top-level entries only (origin IS NULL, or this entry IS the batch root,
+// i.e. url = origin) — newest first. Children of a crawl (origin set to a
+// different entry's url) are intentionally excluded; use /lookout:find to
+// search across all entries including children, or delete.js --origin to
+// act on a whole crawl batch.
 export async function listEntries(db, { limit = 15, tag = null, project = null } = {}) {
-  const outer = entryFilters({ tag, project }, 'e');
-  const inner = entryFilters({ tag, project }, 's');
+  const { clauses, params } = entryFilters({ tag, project }, 'e');
+  const where = ['(e.origin IS NULL OR e.url = e.origin)', ...clauses].join(' AND ');
   const rows = await db.prepare(
-    `SELECT e.id, e.url, e.kind, e.title, e.tags, e.project, e.origin, e.added_at,
-            b.gkey, b.n
+    `SELECT e.id, e.url, e.kind, e.title, e.tags, e.project, e.origin, e.added_at
      FROM entries e
-     JOIN (SELECT COALESCE(s.origin, 'solo:' || s.id) AS gkey, MAX(s.added_at) AS latest, COUNT(*) AS n
-           FROM entries s ${inner.clauses.length ? 'WHERE ' + inner.clauses.join(' AND ') : ''}
-           GROUP BY gkey) b
-       ON COALESCE(e.origin, 'solo:' || e.id) = b.gkey
-     ${outer.clauses.length ? 'WHERE ' + outer.clauses.join(' AND ') : ''}
-     ORDER BY b.latest DESC,
-       CASE WHEN e.url IS NOT NULL AND e.url = e.origin THEN 1 ELSE 0 END DESC,
-       e.added_at DESC, e.id DESC
+     WHERE ${where}
+     ORDER BY e.added_at DESC, e.id DESC
      LIMIT ?`
-  ).all(...inner.params, ...outer.params, limit);
-  const batches = [];
-  for (const { gkey, n, ...r } of rows) {
-    const entry = { ...r, tags: JSON.parse(r.tags) };
-    const last = batches[batches.length - 1];
-    if (last && last.gkey === gkey) last.entries.push(entry);
-    else batches.push({ gkey, n, origin: entry.origin, entries: [entry] });
-  }
-  return batches.map(({ gkey, n, origin, entries }) =>
-    ({ origin, ...(entries.length < n ? { truncated: true } : {}), entries }));
+  ).all(...params, limit);
+  return rows.map(r => ({ ...r, tags: JSON.parse(r.tags) }));
 }
 
 export async function tagCounts(db) {
-  const rows = await db.prepare('SELECT tags FROM entries').all();
-  const counts = new Map();
-  for (const r of rows) {
-    for (const t of JSON.parse(r.tags)) counts.set(t, (counts.get(t) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .map(([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  return db.prepare(
+    `SELECT value AS tag, COUNT(*) AS count
+     FROM entries, json_each(entries.tags)
+     GROUP BY value
+     ORDER BY count DESC, value ASC`
+  ).all();
 }

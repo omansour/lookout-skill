@@ -1,11 +1,12 @@
-// list.js — recent entries grouped by add-batch (origin), optionally filtered
-// by tag and/or project, or tag counts.
+// list.js — recent top-level entries (root of each add-batch, or standalone
+// entries), optionally filtered by tag and/or project, or tag counts.
 //
 // usage: node list.js [--limit 15] [--tag <t>] [--project <name|.>] [--tags]
 //        --project . resolves to the basename of the current directory
-// output: {"batches":[{origin,truncated?,entries:[{id,url,kind,title,tags,project,origin,added_at}]}]}
-//         newest batch first, root entry first within its batch;
-//         truncated = batch cut by --limit
+// output: {"entries":[{id,url,kind,title,tags,project,origin,added_at}]}
+//         newest first (added_at desc); children of a crawl are not listed
+//         here — use find.js/search.js to reach them, or delete.js --origin
+//         to act on a whole crawl batch
 //         with --tags: {"tags":[{"tag","count"}]}
 import { basename } from 'node:path';
 import { ok, unexpected } from './lib/cli.js';
@@ -28,13 +29,13 @@ try {
     await db.close?.();
     ok({ tags });
   }
-  const batches = await listEntries(db, {
+  const entries = await listEntries(db, {
     limit: Number(arg('--limit', 15)),
     tag: arg('--tag', null),
     project: projectArg(),
   });
   await db.close?.();
-  ok({ batches });
+  ok({ entries });
 } catch (e) {
   unexpected(e);
 }

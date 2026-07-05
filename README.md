@@ -7,7 +7,7 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins) that turns saved
 - **Save an article** (`/lookout:add <url>`) — fetches the page, extracts the readable text, writes a summary and tags, stores it, and automatically crawls the most relevant outbound links (up to 2 levels deep, 15 pages max per add). The whole pipeline runs **asynchronously in a background subagent**: you keep working while it indexes, and get a tree recap (root → crawled children, with skipped/failed links) when it finishes.
 - **Ask your knowledge base a question** (`/lookout:find <question>`) — hybrid semantic + keyword search over everything you saved, answered with cited sources.
 - **Jot down a note** (`/lookout:note <text>`) — free-text notes get the same summary/tags/embedding treatment as articles.
-- **Browse and prune** (`/lookout:list`, `/lookout:delete`) — list recent entries grouped by add-batch, filter by tag, delete a single entry or an entire crawl batch in one shot.
+- **Browse and prune** (`/lookout:list`, `/lookout:delete`) — list recent top-level entries, filter by tag, delete a single entry or an entire crawl batch in one shot.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ Both channels are **global, user-level installs**: the skills are available in e
 | `/lookout:init` | System check & repair |
 | `/lookout:add <url>` | Fetch, summarize, tag, store — then crawl relevant links |
 | `/lookout:find <question>` | Semantic + keyword search, answer with citations |
-| `/lookout:list [tag] [N\|all]` | Recent entries grouped by add-batch, optionally filtered by tag |
+| `/lookout:list [tag] [N\|all]` | Recent top-level entries, optionally filtered by tag |
 | `/lookout:note <free text>` | Store a free-text note |
 | `/lookout:delete <id\|url>` | Delete one entry, or a whole add-batch via its origin URL |
 | `/lookout:help` | Overview of all commands and how to get started |
@@ -70,7 +70,7 @@ You can also just talk to Claude ("save this article for my tech watch", "what d
 
 Every entry records the **project** (working directory) it was saved from. `find` and `list` query the whole base by default; scope them to a project in plain language — "find X *in this project*", "list my watch *for project foo*" — and the query is filtered in SQL via `--project` (with `--project .` resolving to the current directory's name).
 
-`list` returns entries **already grouped by add-batch** (shared `origin`): the SQL query orders batches newest-first, puts the root entry before its crawled children, and flags batches cut by the limit (`truncated`) — no post-processing needed on the rendering side.
+`list` returns only **top-level entries** — standalone saves and the root of each crawl batch (`origin IS NULL OR url = origin`) — newest first; crawled children are excluded (reach them via `find`, or preview/delete a whole batch via `delete --origin`).
 
 ## Example session
 
@@ -151,7 +151,7 @@ skills/
   init/SKILL.md     dependency check & repair
   add/SKILL.md      index a URL + crawl relevant links (async subagent pipeline)
   find/SKILL.md     answer a question with citations
-  list/SKILL.md     browse entries grouped by add-batch
+  list/SKILL.md     browse top-level entries (tag filter, tag list)
   note/SKILL.md     store a free-text note
   delete/SKILL.md   delete an entry or an origin batch (with confirmation)
 scripts/
@@ -159,7 +159,7 @@ scripts/
   fetch.js          fetch a URL, extract readable text + links
   store.js          chunk, embed, and persist an entry
   search.js         hybrid semantic + keyword search
-  list.js           entries grouped by add-batch / tag counts
+  list.js           top-level entries / tag counts
   delete.js         delete by id, url, or origin batch
   lib/
     db.js           Turso database access & schema (all SQL lives here)
