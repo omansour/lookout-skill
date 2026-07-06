@@ -16,7 +16,7 @@ The question: `$ARGUMENTS`
    - Add `--tag <t>` if the user filtered by tag.
    - Search is **global by default**. If the user scopes to a project ("in this project", "for project foo"…),
      add `--project <name>` — use `--project .` for "this project" (resolves to the basename of the cwd).
-2. **Answer the user's question** using the results' `summary` and `best_chunk`, citing every source you use with its URL (markdown link).
+2. **Answer the user's question** using the results' `summary` and `best_chunk`, citing every source you use with its URL (markdown link). `best_chunk` is `null` when the best match was the entry's own summary — the `summary` field already carries it.
 3. If a `warning` is present (vector disabled), mention search ran in keyword-only mode.
 4. If results are empty or clearly off-topic, say so honestly and suggest `/lookout:add <url>` to grow the base.
 

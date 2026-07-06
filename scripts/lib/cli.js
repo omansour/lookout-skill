@@ -1,10 +1,11 @@
 // lib/cli.js — shared output convention for all scripts.
-// Success: JSON on stdout, exit 0.
+// Success: compact JSON on stdout (a model reads it — indentation is wasted
+// tokens), exit 0.
 // Expected/repairable error: exit 2, {"error":{code,message,hint}} on stderr.
 // Unexpected error: exit 1, message on stderr.
 
 export function ok(data) {
-  process.stdout.write(JSON.stringify(data, null, 1) + '\n');
+  process.stdout.write(JSON.stringify(data) + '\n');
   process.exit(0);
 }
 
