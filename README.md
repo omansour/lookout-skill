@@ -168,9 +168,16 @@ scripts/
     chunk.js        text chunking
     extract.js      readable-content extraction
     cli.js          shared CLI plumbing (JSON output, error codes)
+hooks/
+  hooks.json        PreToolUse hook wiring
+  approve-scripts.js  auto-approve Bash calls to THIS plugin's own scripts
 ```
 
 All scripts print JSON on stdout and structured errors (`{"error":{code,message,hint}}`) on stderr, so the skills can repair known failures (Ollama down, blocked fetch, bad input) automatically. Skills locate the scripts through their plugin root (announced as each skill's base directory), so both install channels work unchanged.
+
+## Permissions
+
+The plugin ships a `PreToolUse` hook that auto-approves Bash commands invoking its **own** scripts (`node <plugin>/scripts/*.js`, including the quoted-heredoc form used to pipe entry JSON to store.js) — so `/lookout:add` runs prompt-free without any user allowlisting. The check is strict: exact script path, shell-safety scan of the arguments (no chaining, substitution, or redirection), token-boundary guard. Anything else falls through to the normal permission flow; the hook never blocks a command.
 
 ## Development
 
