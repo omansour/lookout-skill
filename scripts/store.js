@@ -2,11 +2,16 @@
 // chunks it, embeds via Ollama, and upserts entry + chunks transactionally.
 //
 // input: {"url":string|null,"kind":"url"|"note","title","summary","tags":[...],
-//         "content","source_domain"?,"project"?,"origin"?}
+//         "content"|"content_file","source_domain"?,"project"?,"origin"?}
+//         content_file = path to a transit text file written by fetch.js —
+//         preferred, the content never transits through the model; inline
+//         content is for notes and the WebFetch fallback. Exactly one of the two.
 //         origin = root URL of the add command that produced this entry
 //         (same value for the root and all crawled children → batch delete)
+// on success the transit files (content_file and the --file JSON) are deleted;
+// on OLLAMA_DOWN they are kept so the same store.js call can be retried.
 // output: {"id":int,"action":"created"|"updated","chunks":int,"url"}
-import { readFileSync } from 'node:fs';
+import { readFileSync, unlinkSync } from 'node:fs';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, storeEntry } from './lib/db.js';
 import { buildChunks, CONTENT_CAP } from './lib/chunk.js';
@@ -31,13 +36,29 @@ try {
   if (entry.kind !== 'url' && entry.kind !== 'note') problems.push("kind must be 'url' or 'note'");
   if (entry.kind === 'url' && typeof entry.url !== 'string') problems.push('url is required for kind=url');
   if (entry.kind === 'note') entry.url = null;
-  for (const f of ['title', 'summary', 'content']) {
+  for (const f of ['title', 'summary']) {
     if (typeof entry[f] !== 'string' || !entry[f].trim()) problems.push(`${f} must be a non-empty string`);
   }
+  const hasInline = typeof entry.content === 'string' && entry.content.trim();
+  const hasFile = typeof entry.content_file === 'string' && entry.content_file.trim();
+  if (hasInline && hasFile) problems.push('pass either content or content_file, not both');
+  if (!hasInline && !hasFile) problems.push('content or content_file must be a non-empty string');
   if (!Array.isArray(entry.tags) || entry.tags.some(t => typeof t !== 'string')) {
     problems.push('tags must be an array of strings');
   }
   if (problems.length) fail('BAD_INPUT', problems.join('; '), 'fix the entry JSON and retry');
+
+  if (hasFile) {
+    try {
+      entry.content = readFileSync(entry.content_file, 'utf8');
+    } catch (e) {
+      fail('BAD_INPUT', `cannot read content_file: ${e.message}`,
+        're-run fetch.js to regenerate the transit content file');
+    }
+    if (!entry.content.trim()) {
+      fail('BAD_INPUT', `content_file is empty: ${entry.content_file}`, 're-run fetch.js');
+    }
+  }
 
   // normalize urls so dedup (UNIQUE on entries.url) and batch delete (origin
   // match) work whatever path produced the JSON — fetch.js or WebFetch fallback
@@ -70,6 +91,10 @@ try {
   const db = await openDb();
   const { id, action } = await storeEntry(db, entry, chunks.map((c, i) => ({ ...c, vector: vectors[i] })));
   await db.close?.();
+  // best-effort cleanup of the transit files — the agent never needs to rm them
+  for (const f of [hasFile ? entry.content_file : null, fileIdx !== -1 ? process.argv[fileIdx + 1] : null]) {
+    if (f) { try { unlinkSync(f); } catch { /* already gone */ } }
+  }
   ok({ id, action, chunks: chunks.length, url: entry.url });
 } catch (e) {
   unexpected(e);

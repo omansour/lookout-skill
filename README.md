@@ -114,13 +114,14 @@ Two saved resources cover this directly:
 add <url>
    │
    ▼
-fetch.js ──► readable text + outbound links (Readability + linkedom)
-   │
-   ▼
+fetch.js ──► readable text → transit file in ~/.lookout/tmp/
+   │         (the model only sees an excerpt + outbound links — the full
+   ▼          content never transits through Claude: token economy)
 Claude writes summary + tags (reusing your existing tag vocabulary)
    │
    ▼
-store.js ──► chunk the content ──► embed each chunk (Ollama) ──► Turso DB
+store.js ──► read the transit file ──► chunk ──► embed (Ollama) ──► Turso DB
+             then clean up the transit files
    │
    └──► follow up to 5 relevant links (depth 1), then 2 each (depth 2)
 

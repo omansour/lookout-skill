@@ -2,9 +2,17 @@
 //
 // usage: node fetch.js <url>
 // output: {"url":"<normalized>","title","byline","site_name","source_domain",
-//          "content","length":int,"truncated":bool,"existing":{id,added_at,updated_at}|null}
-//         content is capped at CONTENT_CAP (store.js truncates there anyway);
-//         length is the full extracted size, truncated says whether the cap hit
+//          "content_file","excerpt","length":int,"truncated":bool,"links",
+//          "existing":{id,added_at,updated_at}|null}
+//         The full text (capped at CONTENT_CAP) is written to content_file in
+//         ~/.lookout/tmp/ — pass that path to store.js as content_file so the
+//         content never transits through the model. excerpt is the first
+//         EXCERPT_LEN chars (enough to summarize/tag); length is the full
+//         extracted size, truncated says whether the cap hit.
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, getEntryByUrl } from './lib/db.js';
 import { extractReadable } from './lib/extract.js';
@@ -12,6 +20,8 @@ import { normalizeUrl } from './lib/url.js';
 import { CONTENT_CAP } from './lib/chunk.js';
 
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+const TMP_DIR = join(homedir(), '.lookout', 'tmp');
+const EXCERPT_LEN = 6000;
 
 try {
   const raw = process.argv[2];
@@ -57,13 +67,20 @@ try {
   const existing = await getEntryByUrl(db, finalUrl);
   await db.close?.();
 
+  const content = text.slice(0, CONTENT_CAP);
+  mkdirSync(TMP_DIR, { recursive: true });
+  const contentFile = join(TMP_DIR,
+    `content-${Date.now()}-${createHash('sha1').update(finalUrl).digest('hex').slice(0, 8)}.txt`);
+  writeFileSync(contentFile, content);
+
   ok({
     url: finalUrl,
     title,
     byline,
     site_name: siteName,
     source_domain: new URL(finalUrl).hostname,
-    content: text.slice(0, CONTENT_CAP),
+    content_file: contentFile,
+    excerpt: content.slice(0, EXCERPT_LEN),
     length: text.length,
     truncated: text.length > CONTENT_CAP,
     links,
