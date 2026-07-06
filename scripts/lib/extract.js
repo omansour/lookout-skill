@@ -58,7 +58,8 @@ function extractLinks(contentHtml, baseUrl) {
     seen.add(urlStr);
     const text = (a.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
     links.push({ url: urlStr, text });
-    if (links.length >= 40) break;
+    // 25 candidates is plenty: the add skill selects at most 5 per page
+    if (links.length >= 25) break;
   }
   return links;
 }

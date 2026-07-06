@@ -3,7 +3,8 @@
 //
 // usage: node list.js [--limit 15] [--tag <t>] [--project <name|.>] [--tags]
 //        --project . resolves to the basename of the current directory
-// output: {"entries":[{id,url,kind,title,tags,project,origin,added_at}]}
+// output: {"entries":[{id,url,kind,title,tags,project,added_at}]}
+//         (origin is not returned: for top-level rows it is null or equal to url)
 //         newest first (added_at desc); children of a crawl are not listed
 //         here — use find.js/search.js to reach them, or delete.js --origin
 //         to act on a whole crawl batch

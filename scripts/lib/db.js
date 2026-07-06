@@ -147,16 +147,17 @@ export async function vectorSearch(db, queryVector, { topChunks = 40, tag = null
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const cols = ENTRY_COLS.split(', ').map(c => `e.${c}`).join(', ');
   const rows = await db.prepare(
-    `SELECT ${cols}, c.text, vector_distance_cos(c.embedding, vector32(?)) AS dist
+    `SELECT ${cols}, c.seq, c.text, vector_distance_cos(c.embedding, vector32(?)) AS dist
      FROM chunks c JOIN entries e ON e.id = c.entry_id ${where}
      ORDER BY dist ASC LIMIT ?`
   ).all(JSON.stringify(queryVector), ...params, topChunks);
   const results = [];
   const seen = new Set(); // keep only each entry's best chunk (rows come sorted)
-  for (const { text, dist, ...e } of rows) {
+  for (const { seq, text, dist, ...e } of rows) {
     if (seen.has(e.id)) continue;
     seen.add(e.id);
-    results.push({ ...e, tags: JSON.parse(e.tags), distance: dist, best_chunk: text });
+    // chunk 0 is the title+summary+tags header — already in the result, pure duplicate
+    results.push({ ...e, tags: JSON.parse(e.tags), distance: dist, best_chunk: seq === 0 ? null : text });
   }
   return results; // already ordered by distance
 }
@@ -234,7 +235,7 @@ export async function listEntries(db, { limit = 15, tag = null, project = null }
   const { clauses, params } = entryFilters({ tag, project }, 'e');
   const where = ['(e.origin IS NULL OR e.url = e.origin)', ...clauses].join(' AND ');
   const rows = await db.prepare(
-    `SELECT e.id, e.url, e.kind, e.title, e.tags, e.project, e.origin, e.added_at
+    `SELECT e.id, e.url, e.kind, e.title, e.tags, e.project, e.added_at
      FROM entries e
      WHERE ${where}
      ORDER BY e.added_at DESC, e.id DESC
