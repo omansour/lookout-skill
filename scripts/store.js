@@ -1,5 +1,6 @@
-// store.js — the sole write path. Reads an entry JSON (stdin or --file),
-// chunks it, embeds via Ollama, and upserts entry + chunks transactionally.
+// store.js — the sole write path. Reads an entry JSON (stdin, preferred, or
+// --file), chunks it, embeds via Ollama, and upserts entry + chunks
+// transactionally.
 //
 // input: {"url":string|null,"kind":"url"|"note","title","summary","tags":[...],
 //         "content"|"content_file","source_domain"?,"project"?,"origin"?}
@@ -8,10 +9,14 @@
 //         content is for notes and the WebFetch fallback. Exactly one of the two.
 //         origin = root URL of the add command that produced this entry
 //         (same value for the root and all crawled children → batch delete)
-// on success the transit files (content_file and the --file JSON) are deleted;
-// on OLLAMA_DOWN they are kept so the same store.js call can be retried.
+// on success the transit files (content_file and the --file JSON) are deleted.
+// on OLLAMA_DOWN everything is kept for retry: with stdin input the script
+// persists the received JSON itself to ~/.lookout/tmp/ and hints the path —
+// the model never needs to write or delete files.
 // output: {"id":int,"action":"created"|"updated","chunks":int,"url"}
-import { readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, storeEntry } from './lib/db.js';
 import { buildChunks, CONTENT_CAP } from './lib/chunk.js';
@@ -81,9 +86,16 @@ try {
     vectors = await embed(chunks.map(c => c.text));
   } catch (e) {
     if (e instanceof OllamaDownError) {
-      fail('OLLAMA_DOWN', e.message, fileIdx !== -1
-        ? "the transit JSON is kept in ~/.lookout/tmp/ — start Ollama ('ollama serve') and rerun store.js with the same --file"
-        : "start Ollama ('ollama serve') and rerun store.js with the same entry JSON");
+      // persist stdin input ourselves so the retry is a plain --file rerun
+      let retryFile = fileIdx !== -1 ? process.argv[fileIdx + 1] : null;
+      if (!retryFile) {
+        const tmpDir = join(homedir(), '.lookout', 'tmp');
+        mkdirSync(tmpDir, { recursive: true });
+        retryFile = join(tmpDir, `entry-${Date.now()}.json`);
+        writeFileSync(retryFile, raw);
+      }
+      fail('OLLAMA_DOWN', e.message,
+        `the entry JSON is kept at ${retryFile} — start Ollama ('ollama serve') then rerun store.js --file with that path`);
     }
     throw e;
   }
