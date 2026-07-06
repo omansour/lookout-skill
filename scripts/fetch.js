@@ -1,4 +1,6 @@
 // fetch.js — fetch a URL, extract readable content, report duplicates. No DB writes.
+// Handles text/html (Readability extraction) and text/plain|markdown (raw body,
+// title from the first markdown heading or the URL filename, no links).
 //
 // usage: node fetch.js <url>
 // output: {"url":"<normalized>","title","byline","site_name","source_domain",
@@ -15,7 +17,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { ok, fail, unexpected } from './lib/cli.js';
 import { openDb, getEntryByUrl } from './lib/db.js';
-import { extractReadable } from './lib/extract.js';
+import { extractReadable, normalize } from './lib/extract.js';
 import { normalizeUrl } from './lib/url.js';
 import { CONTENT_CAP } from './lib/chunk.js';
 
@@ -37,7 +39,7 @@ try {
   let res;
   try {
     res = await fetch(url, {
-      headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml' },
+      headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,text/markdown;q=0.9' },
       redirect: 'follow',
       signal: AbortSignal.timeout(15_000),
     });
@@ -50,14 +52,28 @@ try {
       'fall back to WebFetch to get the page text, then call store.js directly');
   }
   const contentType = res.headers.get('content-type') ?? '';
-  if (!contentType.includes('text/html') && !contentType.includes('xhtml')) {
-    fail('UNSUPPORTED_TYPE', `content-type is '${contentType}', not HTML`,
+  const isHtml = contentType.includes('text/html') || contentType.includes('xhtml');
+  const isPlain = /text\/(plain|markdown)/.test(contentType);
+  if (!isHtml && !isPlain) {
+    fail('UNSUPPORTED_TYPE', `content-type is '${contentType}', not HTML or plain text`,
       'fall back to WebFetch (it handles PDFs and other types), then call store.js directly');
   }
 
   const finalUrl = normalizeUrl(res.url || url);
-  const html = await res.text();
-  const { title, byline, siteName, text, links } = extractReadable(html, finalUrl);
+  const body = await res.text();
+  let title, byline, siteName, text, links;
+  if (isHtml) {
+    ({ title, byline, siteName, text, links } = extractReadable(body, finalUrl));
+  } else {
+    // raw text/markdown (e.g. raw.githubusercontent.com): the body IS the content
+    text = normalize(body);
+    title = text.match(/^#{1,6}\s+(.+)$/m)?.[1]?.trim()
+      || decodeURIComponent(new URL(finalUrl).pathname.split('/').filter(Boolean).pop() ?? '')
+      || finalUrl;
+    byline = null;
+    siteName = null;
+    links = []; // no HTML to extract links from
+  }
   if (text.length < 200) {
     fail('EXTRACT_EMPTY', `extracted only ${text.length} chars (likely JS-rendered)`,
       'fall back to WebFetch to get the page text, then call store.js directly');
@@ -69,8 +85,9 @@ try {
 
   const content = text.slice(0, CONTENT_CAP);
   mkdirSync(TMP_DIR, { recursive: true });
+  // epoch + url hash + pid: unique even across parallel add subagents
   const contentFile = join(TMP_DIR,
-    `content-${Date.now()}-${createHash('sha1').update(finalUrl).digest('hex').slice(0, 8)}.txt`);
+    `content-${Date.now()}-${createHash('sha1').update(finalUrl).digest('hex').slice(0, 8)}-${process.pid}.txt`);
   writeFileSync(contentFile, content);
 
   ok({

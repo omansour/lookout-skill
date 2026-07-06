@@ -32,6 +32,9 @@ conversation. Instead, launch it in the background so the user can keep working:
 1. Run `node <PLUGIN_ROOT>/scripts/fetch.js "<url>"`.
    - If `existing` is not null: skip (already saved) — for the root URL, ask the user about updating first (see above).
    - If exit 2 (`FETCH_BLOCKED` / `EXTRACT_EMPTY` / `UNSUPPORTED_TYPE`): fall back to **WebFetch** on the URL with prompt "Return the full readable text of this page, plus its title." Use that as title/content; pass the URL as-is — store.js normalizes it (strips fragment and utm_* params).
+   - **Never fetch a URL with curl/wget via Bash.** fetch.js handles HTML and raw text/markdown
+     (including raw.githubusercontent.com); WebFetch is the only fallback (root URL only).
+     If both fail, report the page as failed in the recap and move on.
 2. Run `node <PLUGIN_ROOT>/scripts/list.js --tags` to see existing tags.
 3. Write a **3–5 sentence English summary** based on the `excerpt` and pick **3–6 tags**:
    reuse existing tags when relevant; new tags in kebab-case English.

@@ -70,7 +70,7 @@ function fallbackTitle(document) {
     || 'Untitled';
 }
 
-function normalize(text) {
+export function normalize(text) {
   return text
     .replace(/\r/g, '')
     .split('\n').map(l => l.trim()).join('\n')

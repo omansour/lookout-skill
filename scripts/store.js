@@ -91,7 +91,7 @@ try {
       if (!retryFile) {
         const tmpDir = join(homedir(), '.lookout', 'tmp');
         mkdirSync(tmpDir, { recursive: true });
-        retryFile = join(tmpDir, `entry-${Date.now()}.json`);
+        retryFile = join(tmpDir, `entry-${Date.now()}-${process.pid}.json`);
         writeFileSync(retryFile, raw);
       }
       fail('OLLAMA_DOWN', e.message,
